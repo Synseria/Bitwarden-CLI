@@ -6,7 +6,7 @@ on:
       version:
         required: true
         type: string
-      dry_run: # true = TEST, false = PROD
+      dry_run:
         required: true
         type: boolean
 
@@ -17,21 +17,46 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     permissions:
-      contents: write   # Pour la Release
-      packages: write   # Pour le Push GHCR
-      id-token: write   # Pour l'authentification GHCR
+      contents: write       # Release
+      packages: write       # GHCR push
+      id-token: write       # GHCR auth
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
+      # --- Vérification + incrément auto du tag ---
+      - name: Check & increment tag if exists
+        id: tagfix
+        run: |
+          RAW="${{ inputs.version }}"
+          TAG="v${RAW}"
+
+          echo "Checking if tag ${TAG} exists..."
+          if git ls-remote --tags origin | grep -q "refs/tags/${TAG}$"; then
+            echo "Tag ${TAG} already exists. Incrementing patch..."
+
+            IFS='.' read -r MAJ MIN PATCH <<< "$RAW"
+            PATCH=$((PATCH+1))
+            NEW="${MAJ}.${MIN}.${PATCH}"
+
+            echo "NEW_TAG=v${NEW}" >> $GITHUB_OUTPUT
+            echo "VERSION_FIXED=${NEW}" >> $GITHUB_OUTPUT
+          else
+            echo "Tag ${TAG} does not exist. Keeping original version."
+            echo "NEW_TAG=${TAG}" >> $GITHUB_OUTPUT
+            echo "VERSION_FIXED=${RAW}" >> $GITHUB_OUTPUT
+          fi
+
+      # --- Docker toolchain ---
       - name: Set up QEMU (ARM support)
         uses: docker/setup-qemu-action@v3
         with:
           platforms: all
           image: tonistiigi/binfmt:latest
-        
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -42,38 +67,41 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # --- Calcul des tags Docker ---
       - name: Calcul des Tags
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # Tags DEV (Si Dry Run est vrai)
+            # Tags DEV
             type=raw,value=dev,enable=${{ inputs.dry_run }}
-            type=raw,value=dev-${{ inputs.version }},enable=${{ inputs.dry_run }}
-            
-            # Tags PROD (Si Dry Run est faux)
+            type=raw,value=dev-${{ steps.tagfix.outputs.VERSION_FIXED }},enable=${{ inputs.dry_run }}
+
+            # Tags PROD
             type=raw,value=latest,enable=${{ !inputs.dry_run }}
             type=raw,value=stable,enable=${{ !inputs.dry_run }}
-            type=semver,pattern=v{{version}},value=${{ inputs.version }},enable=${{ !inputs.dry_run }}
-            type=semver,pattern=v{{major}}.{{minor}},value=${{ inputs.version }},enable=${{ !inputs.dry_run }}
-            type=semver,pattern=v{{major}},value=${{ inputs.version }},enable=${{ !inputs.dry_run }}
+            type=semver,pattern=v{{version}},value=${{ steps.tagfix.outputs.VERSION_FIXED }},enable=${{ !inputs.dry_run }}
+            type=semver,pattern=v{{major}}.{{minor}},value=${{ steps.tagfix.outputs.VERSION_FIXED }},enable=${{ !inputs.dry_run }}
+            type=semver,pattern=v{{major}},value=${{ steps.tagfix.outputs.VERSION_FIXED }},enable=${{ !inputs.dry_run }}
 
-
+      # --- Build multi-arch + push ---
       - name: Build & Push (Multi-Arch)
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          build-args: BW_VERSION=${{ inputs.version }}
-          platforms: linux/amd64,linux/arm64 # 📢 Push multi-arch (nécessite Buildx)
+          build-args: |
+            BW_VERSION=${{ steps.tagfix.outputs.VERSION_FIXED }}
+          platforms: linux/amd64,linux/arm64
 
+      # --- Release GitHub ---
       - name: GitHub Release
         if: inputs.dry_run == false
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ inputs.version }}
-          name: v${{ inputs.version }}
+          tag_name: ${{ steps.tagfix.outputs.NEW_TAG }}
+          name: ${{ steps.tagfix.outputs.NEW_TAG }}
           generate_release_notes: true
           make_latest: true
