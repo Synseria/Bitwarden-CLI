@@ -22,7 +22,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       update_needed: ${{ steps.set_version.outputs.update_needed }}
-      # Utilise le 'set_version' pour avoir la version forcée ou détectée
       version: ${{ steps.set_version.outputs.version }} 
     steps:
       - name: Checkout
