@@ -31,11 +31,10 @@ ENV BW_HOST="https://api.bitwarden.com"
 ENV TZ="Europe/Paris"
 ENV BW_PORT="8087"
 
-# 🆕 CRÉATION DU DOSSIER DE CONFIGURATION
 # Les guillemets sont importants car il y a un espace dans "Bitwarden CLI"
 RUN mkdir -p "/bw/.config/Bitwarden CLI"
 
-# 🆕 GESTION DES PERMISSIONS
+# GESTION DES PERMISSIONS
 # On donne tout à l'utilisateur 'node' (natif dans l'image)
 RUN chown -R node:node /bw \
     && chown node:node /entrypoint.sh
