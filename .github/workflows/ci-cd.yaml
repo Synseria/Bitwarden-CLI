@@ -52,7 +52,7 @@ jobs:
 
       # --- Docker toolchain ---
       - name: Set up QEMU (ARM support)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           platforms: all
           image: tonistiigi/binfmt:latest
