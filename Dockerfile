@@ -1,5 +1,5 @@
 # Étape 1 : Utilisation de Node.js LTS sur Alpine
-FROM node:25-alpine
+FROM node:26-alpine
 
 # Déclaration de la version
 ARG BW_VERSION
